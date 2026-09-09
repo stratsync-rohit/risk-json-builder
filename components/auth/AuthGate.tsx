@@ -51,7 +51,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         setUser(null)
         setStatus('denied')
         setError('Access denied. Please sign in with your @stratsync.ai account.')
-        void firebaseSignOut(auth)
+        if (auth) void firebaseSignOut(auth)
         return
       }
 
