@@ -36,6 +36,7 @@ const savedJsonStorageKey = 'risk-json-builder-current-json'
 const savedRiskTimestampKey = 'risk-json-builder-saved-at'
 const activeRiskStatusStorageKey = 'risk-json-builder-active-status'
 const databaseSavedRiskIdStorageKey = 'risk-json-builder-database-saved-risk-id'
+const editingRiskIdStorageKey = 'risk-json-builder-editing-risk-id'
 const autosaveDelayMs = 1000
 const riskIdCharacters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 const riskIdGenerationAttempts = 10
@@ -452,7 +453,7 @@ function databaseRiskStatus(risk: DatabaseRisk) {
   return databaseRiskLabel(risk.status || (risk.is_active ? 'active' : ''), '—')
 }
 
-function DatabaseRisksView({ risks, selectedRisk, loading, error, onRefresh, onView, onLoad }: { risks: DatabaseRisk[]; selectedRisk: Risk | null; loading: boolean; error: string; onRefresh: () => void; onView: (risk: DatabaseRisk | null) => void; onLoad: (risk: DatabaseRisk) => void }) {
+function DatabaseRisksView({ risks, selectedRisk, loading, error, deletingRiskId, onRefresh, onView, onEdit, onDelete }: { risks: DatabaseRisk[]; selectedRisk: Risk | null; loading: boolean; error: string; deletingRiskId: string; onRefresh: () => void; onView: (risk: DatabaseRisk | null) => void; onEdit: (risk: DatabaseRisk) => void; onDelete: (risk: DatabaseRisk) => void }) {
   return <div className="flex flex-col gap-5">
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
       <div><h3 className="text-lg font-bold text-slate-950">Database Risks</h3><p className="mt-1 text-sm text-slate-500">View risks currently stored in MongoDB.</p></div>
@@ -461,7 +462,7 @@ function DatabaseRisksView({ risks, selectedRisk, loading, error, onRefresh, onV
     {loading && <p className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-500 shadow-sm">Loading database risks...</p>}
     {!loading && error && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700"><span>{error}</span><Button onClick={onRefresh} className="cursor-pointer border-red-200 text-red-700 hover:bg-white">Retry</Button></div>}
     {!loading && !error && risks.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center text-sm text-slate-500">No risks found in the database.</p>}
-    {!loading && !error && risks.length > 0 && <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Risk ID</th><th className="px-4 py-3">Title</th><th className="px-4 py-3">Severity</th><th className="px-4 py-3">Industry</th><th className="px-4 py-3">SKU / Product</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{risks.map((risk, index) => { const { sku, product } = getDatabaseRiskSkuProduct(risk); return <tr key={databaseRiskLabel(risk._id, '') || databaseRiskLabel(risk.risk_id, '') || index} className="align-top hover:bg-slate-50/70"><td className="whitespace-nowrap px-4 py-4 font-semibold text-slate-700">{databaseRiskLabel(risk.risk_id)}</td><td className="max-w-[260px] px-4 py-4 font-semibold text-slate-900">{databaseRiskLabel(risk.title)}</td><td className="px-4 py-4"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${severityTone[String(risk.severity || '').toLowerCase()] || 'border-slate-200 bg-slate-50 text-slate-600'}`}>{databaseRiskLabel(risk.severity_label || risk.severity)}</span></td><td className="px-4 py-4 text-slate-600">{databaseRiskLabel(risk.industry_name || risk.industry_slug)}</td><td className="max-w-[280px] whitespace-normal break-words px-4 py-4 text-slate-600">{sku || product ? <>{sku && <span className="font-medium text-slate-700">{sku}</span>}{sku && product ? ' · ' : null}{product && <span>{product}</span>}</> : '—'}</td><td className="px-4 py-4 capitalize text-slate-600">{databaseRiskStatus(risk)}</td><td className="px-4 py-4"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onView(risk)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"><Eye className="size-3.5" />View</button><button type="button" onClick={() => onLoad(risk)} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"><ArrowRight className="size-3.5" />Load</button></div></td></tr> })}</tbody></table></div></div>}
+    {!loading && !error && risks.length > 0 && <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Risk ID</th><th className="px-4 py-3">Title</th><th className="px-4 py-3">Severity</th><th className="px-4 py-3">Industry</th><th className="px-4 py-3">SKU / Product</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{risks.map((risk, index) => { const { sku, product } = getDatabaseRiskSkuProduct(risk); const riskId = stringValue(risk.risk_id); const deleting = deletingRiskId === riskId; return <tr key={databaseRiskLabel(risk._id, '') || riskId || index} className="align-top hover:bg-slate-50/70"><td className="whitespace-nowrap px-4 py-4 font-semibold text-slate-700">{databaseRiskLabel(risk.risk_id)}</td><td className="max-w-[260px] px-4 py-4 font-semibold text-slate-900">{databaseRiskLabel(risk.title)}</td><td className="px-4 py-4"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${severityTone[String(risk.severity || '').toLowerCase()] || 'border-slate-200 bg-slate-50 text-slate-600'}`}>{databaseRiskLabel(risk.severity_label || risk.severity)}</span></td><td className="px-4 py-4 text-slate-600">{databaseRiskLabel(risk.industry_name || risk.industry_slug)}</td><td className="max-w-[280px] whitespace-normal break-words px-4 py-4 text-slate-600">{sku || product ? <>{sku && <span className="font-medium text-slate-700">{sku}</span>}{sku && product ? ' · ' : null}{product && <span>{product}</span>}</> : '—'}</td><td className="px-4 py-4 capitalize text-slate-600">{databaseRiskStatus(risk)}</td><td className="px-4 py-4"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onView(risk)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"><Eye className="size-3.5" />View</button><button type="button" onClick={() => onEdit(risk)} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"><ArrowRight className="size-3.5" />Edit</button><button type="button" disabled={!riskId || deleting} onClick={() => onDelete(risk)} className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60">{deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}{deleting ? 'Deleting...' : 'Delete'}</button></div></td></tr> })}</tbody></table></div></div>}
     {selectedRisk && <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Preview</p><h3 className="mt-1 text-sm font-bold text-slate-900">{databaseRiskLabel(selectedRisk.title)}</h3></div><button type="button" onClick={() => onView(null)} className="text-xs font-semibold text-slate-400 hover:text-slate-700">Close</button></div><Preview risk={selectedRisk} /></div>}
   </div>
 }
@@ -489,6 +490,9 @@ function RiskJsonBuilder() {
   const [databaseSaveStatus, setDatabaseSaveStatus] = useState<DatabaseSaveStatus>('idle')
   const [databaseSaveRiskId, setDatabaseSaveRiskId] = useState('')
   const [databaseStoredRiskIds, setDatabaseStoredRiskIds] = useState<Set<string>>(() => new Set())
+  const [editingRiskId, setEditingRiskId] = useState('')
+  const [isUpdatingRisk, setIsUpdatingRisk] = useState(false)
+  const [deletingRiskId, setDeletingRiskId] = useState('')
   const [panelWidths, setPanelWidths] = useState<PanelWidths>(defaultPanelWidths)
   const [activeResizeHandle, setActiveResizeHandle] = useState<ResizeHandleId | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -506,6 +510,7 @@ function RiskJsonBuilder() {
   }, [json, jsonText, mode])
   const riskAlreadyInDatabase = Boolean(risk.risk_id && databaseStoredRiskIds.has(risk.risk_id))
   const canAddToDatabase = Boolean(activeRiskStatus === 'draft' && isInitialized && risk.risk_id && riskValidation.success && jsonEditorSynchronized && riskIdStatus === 'verified' && !isGeneratingRiskId && databaseSaveStatus !== 'saving' && !riskAlreadyInDatabase)
+  const canUpdateRisk = Boolean(editingRiskId && !isUpdatingRisk)
   const flash = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(''), 2200) }
   const commitFormRisk = (nextRisk: Risk) => {
     const synchronizedRisk = syncAlertFromBasic(nextRisk)
@@ -607,7 +612,7 @@ function RiskJsonBuilder() {
   useEffect(() => {
     if (mode === 'database' && !databaseLoaded) void fetchDatabaseRisks()
   }, [databaseLoaded, fetchDatabaseRisks, mode])
-  const loadDatabaseRisk = (databaseRisk: DatabaseRisk) => {
+  const editDatabaseRisk = (databaseRisk: DatabaseRisk) => {
     try {
       const nextRisk = syncAlertFromBasic(normalizeRisk(mapDatabaseRiskToBuilderRisk(databaseRisk)))
       cancelRiskIdGeneration('verified')
@@ -620,15 +625,17 @@ function RiskJsonBuilder() {
       if (nextRisk.risk_id) setDatabaseStoredRiskIds(current => new Set(current).add(nextRisk.risk_id))
       setDatabaseSaveStatus('idle')
       setDatabaseSaveRiskId('')
+      setEditingRiskId(nextRisk.risk_id)
       try {
         window.localStorage.setItem(savedRiskStorageKey, JSON.stringify(nextRisk))
         window.localStorage.setItem(savedJsonStorageKey, toJson(nextRisk))
         window.localStorage.setItem(activeRiskStatusStorageKey, 'existing-database')
+        window.localStorage.setItem(editingRiskIdStorageKey, nextRisk.risk_id)
       } catch {
         // Keep the database risk available in memory if storage is unavailable.
       }
       setSelectedDatabaseRisk(null)
-      setMode('json')
+      setMode('form')
     } catch (loadError) {
       if (process.env.NODE_ENV === 'development') console.error('Unable to load database risk into builder', loadError)
       flash('Unable to load this database risk into the builder.')
@@ -647,19 +654,137 @@ function RiskJsonBuilder() {
       flash('Unable to load this database risk into the preview.')
     }
   }
+  const clearEditSession = () => {
+    setEditingRiskId('')
+    setIsUpdatingRisk(false)
+    setActiveRiskStatus('none')
+    setJsonText('')
+    setJsonError('')
+    setDirty(false)
+    setSaveState('idle')
+    try {
+      window.localStorage.setItem(activeRiskStatusStorageKey, 'none')
+      window.localStorage.removeItem(editingRiskIdStorageKey)
+      window.localStorage.removeItem(savedRiskStorageKey)
+      window.localStorage.removeItem(savedJsonStorageKey)
+      window.localStorage.removeItem(savedRiskTimestampKey)
+    } catch {
+      // Keep the edit session cleared in memory if storage is unavailable.
+    }
+  }
+  const cancelEdit = () => {
+    clearEditSession()
+    setMode('database')
+    setSelectedDatabaseRisk(null)
+  }
+  const updateDatabaseRisk = async () => {
+    if (!editingRiskId || isUpdatingRisk) return
+    if (riskRef.current.risk_id !== editingRiskId) {
+      flash('Risk ID cannot be changed.')
+      return
+    }
+
+    const validation = riskSchema.safeParse(JSON.parse(toJson(riskRef.current)))
+    if (!validation.success || !jsonEditorSynchronized || riskIdStatus !== 'verified') {
+      flash('Please fix the risk data before updating.')
+      return
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, '')
+    if (!baseUrl) {
+      flash('Unable to connect to the risk API.')
+      return
+    }
+
+    setIsUpdatingRisk(true)
+    try {
+      const canonicalRisk = normalizeRisk(validation.data)
+      const response = await fetch(`${baseUrl}/api/risks/${encodeURIComponent(editingRiskId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: toJson(canonicalRisk),
+      })
+
+      if (response.status === 200) {
+        clearEditSession()
+        setMode('database')
+        setDatabaseLoaded(true)
+        await fetchDatabaseRisks()
+        flash('Risk updated successfully')
+        return
+      }
+      if (response.status === 404) {
+        flash('Risk no longer exists in the database.')
+        await fetchDatabaseRisks()
+        return
+      }
+      if (response.status === 400) {
+        flash('Risk ID cannot be changed.')
+        return
+      }
+      if (response.status === 422) {
+        flash('Risk data is invalid. Please review the form.')
+        return
+      }
+      flash('Unable to update risk. Please try again.')
+    } catch (updateError) {
+      if (process.env.NODE_ENV === 'development') console.error('Unable to update database risk', updateError)
+      flash('Unable to connect to the risk API.')
+    } finally {
+      setIsUpdatingRisk(false)
+    }
+  }
+  const deleteDatabaseRisk = async (databaseRisk: DatabaseRisk) => {
+    const riskId = stringValue(databaseRisk.risk_id).trim()
+    if (!riskId || deletingRiskId) return
+    if (!window.confirm(`Delete risk "${riskId}"?\n\nThis action cannot be undone.`)) return
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, '')
+    if (!baseUrl) {
+      flash('Unable to connect to the risk API.')
+      return
+    }
+
+    setDeletingRiskId(riskId)
+    try {
+      const response = await fetch(`${baseUrl}/api/risks/${encodeURIComponent(riskId)}`, { method: 'DELETE' })
+      if (response.ok) {
+        setDatabaseStoredRiskIds(current => { const next = new Set(current); next.delete(riskId); return next })
+        await fetchDatabaseRisks()
+        flash('Risk deleted successfully')
+        return
+      }
+      if (response.status === 404) {
+        setDatabaseStoredRiskIds(current => { const next = new Set(current); next.delete(riskId); return next })
+        await fetchDatabaseRisks()
+        flash('Risk was already deleted or no longer exists.')
+        return
+      }
+      flash('Unable to delete risk. Please try again.')
+    } catch (deleteError) {
+      if (process.env.NODE_ENV === 'development') console.error('Unable to delete database risk', deleteError)
+      flash('Unable to delete risk. Please try again.')
+    } finally {
+      setDeletingRiskId('')
+    }
+  }
   const copy = async (value: string) => { await navigator.clipboard.writeText(value); flash('JSON copied to clipboard') }
   const download = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' })); a.download = `${risk.risk_id || 'risk'}.json`; a.click(); URL.revokeObjectURL(a.href) }
   const applyJsonToPreview = useCallback((source: string) => {
     const result = parseRiskText(source)
 
     if (result.risk) {
+      if (editingRiskId && result.risk.risk_id !== editingRiskId) {
+        setJsonError('Risk ID cannot be changed while editing a database risk.')
+        return false
+      }
       cancelRiskIdGeneration('verified')
       const synchronizedRisk = syncAlertFromBasic(result.risk)
       const riskChanged = toJson(synchronizedRisk) !== toJson(riskRef.current)
       setRisk(synchronizedRisk)
       setJsonError('')
       if (riskChanged) {
-        setActiveRiskStatus('draft')
+        if (!editingRiskId) setActiveRiskStatus('draft')
         setDirty(true)
         setSaveState('idle')
       }
@@ -668,12 +793,17 @@ function RiskJsonBuilder() {
 
     setJsonError(result.error)
     return false
-  }, [])
+  }, [editingRiskId])
 
   const parse = () => {
     try {
       const parsedValue = JSON.parse(jsonText) as Record<string, unknown>
       const parsedRiskId = typeof parsedValue?.risk_id === 'string' ? parsedValue.risk_id.trim() : ''
+
+      if (editingRiskId && parsedRiskId !== editingRiskId) {
+        setJsonError('Risk ID cannot be changed while editing a database risk.')
+        return
+      }
 
       if (!parsedRiskId) {
         const normalizedRisk = normalizeRisk({ ...parsedValue, risk_id: '__PENDING__' })
@@ -699,11 +829,13 @@ function RiskJsonBuilder() {
     }
 
     const freshRisk = createFreshRiskDraft()
+    setEditingRiskId('')
     setActiveRiskStatus('draft')
     setDatabaseSaveStatus('idle')
     setDatabaseSaveRiskId('')
     try {
       window.localStorage.setItem(activeRiskStatusStorageKey, 'draft')
+      window.localStorage.removeItem(editingRiskIdStorageKey)
     } catch {
       // Continue with the in-memory draft if storage is unavailable.
     }
@@ -713,6 +845,7 @@ function RiskJsonBuilder() {
 
   const startNewRisk = () => {
     const freshRisk = createFreshRiskDraft()
+    setEditingRiskId('')
     setActiveRiskStatus('draft')
     setDatabaseSaveStatus('idle')
     setDatabaseSaveRiskId('')
@@ -724,6 +857,7 @@ function RiskJsonBuilder() {
     setRisk(freshRisk)
     try {
       window.localStorage.setItem(activeRiskStatusStorageKey, 'draft')
+      window.localStorage.removeItem(editingRiskIdStorageKey)
       window.localStorage.removeItem(savedRiskStorageKey)
       window.localStorage.removeItem(savedJsonStorageKey)
       window.localStorage.removeItem(savedRiskTimestampKey)
@@ -820,6 +954,7 @@ function RiskJsonBuilder() {
         const savedRisk = window.localStorage.getItem(savedRiskStorageKey)
         const storedStatus = window.localStorage.getItem(activeRiskStatusStorageKey) as ActiveRiskStatus | null
         const databaseSavedRiskId = window.localStorage.getItem(databaseSavedRiskIdStorageKey)
+        const storedEditingRiskId = window.localStorage.getItem(editingRiskIdStorageKey)
 
         if (storedStatus === 'none' || (!savedRisk && databaseSavedRiskId && storedStatus !== 'draft')) {
           setActiveRiskStatus('none')
@@ -844,6 +979,7 @@ function RiskJsonBuilder() {
             if (databaseSavedRiskId === savedRiskId || storedStatus === 'existing-database') {
               setActiveRiskStatus('existing-database')
               setDatabaseStoredRiskIds(current => new Set(current).add(savedRiskId))
+              if (storedEditingRiskId === savedRiskId) setEditingRiskId(savedRiskId)
             } else {
               setActiveRiskStatus('draft')
             }
@@ -1101,14 +1237,19 @@ function RiskJsonBuilder() {
       : 'Add to Database'
   const emptyState = <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm"><div className="max-w-md"><div className="mx-auto flex size-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-700"><Check className="size-5" /></div><h3 className="mt-4 text-lg font-bold text-slate-950">No active risk</h3><p className="mt-2 text-sm text-slate-500">Your previous risk has been added to the database. Start a new risk when ready.</p><Button primary className="mt-6 cursor-pointer" onClick={startNewRisk}><Plus className="size-3.5" />New Risk</Button></div></div>
   const builderContent = mode === 'database'
-    ? <DatabaseRisksView risks={databaseRisks} selectedRisk={selectedDatabaseRisk} loading={databaseLoading} error={databaseError} onRefresh={() => { void fetchDatabaseRisks() }} onView={viewDatabaseRisk} onLoad={loadDatabaseRisk} />
+    ? <DatabaseRisksView risks={databaseRisks} selectedRisk={selectedDatabaseRisk} loading={databaseLoading} error={databaseError} deletingRiskId={deletingRiskId} onRefresh={() => { void fetchDatabaseRisks() }} onView={viewDatabaseRisk} onEdit={editDatabaseRisk} onDelete={deleteDatabaseRisk} />
     : activeRiskStatus === 'none'
       ? emptyState
       : mode === 'form'
         ? formJsonLayout
         : <div className="grid items-start gap-6 lg:grid-cols-[0.8fr_1.2fr]">{jsonPanel}<Preview risk={risk} /></div>
+  const headerActions = activeRiskStatus === 'none'
+    ? <Button primary className="cursor-pointer" onClick={startNewRisk}><Plus className="size-3.5" />New Risk</Button>
+    : editingRiskId
+      ? <><Button primary className="cursor-pointer disabled:cursor-not-allowed" disabled={!canUpdateRisk} onClick={() => { void updateDatabaseRisk() }}>{isUpdatingRisk && <Loader2 className="size-3.5 animate-spin" />}{isUpdatingRisk ? 'Updating...' : 'Update Risk'}</Button><Button className="cursor-pointer" disabled={isUpdatingRisk} onClick={cancelEdit}><X className="size-3.5" />Cancel Edit</Button></>
+      : <><Button className="cursor-pointer disabled:cursor-not-allowed" disabled={!canAddToDatabase} onClick={() => { void addToDatabase() }}>{databaseSaveStatus === 'saving' && databaseSaveRiskId === risk.risk_id ? <Loader2 className="size-3.5 animate-spin" /> : riskAlreadyInDatabase ? <Check className="size-3.5" /> : <Database className="size-3.5" />}{databaseButtonLabel}</Button><Button className="cursor-pointer disabled:cursor-not-allowed" disabled={isGeneratingRiskId} onClick={resetRisk}>{isGeneratingRiskId ? <RefreshCw className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}{isGeneratingRiskId ? 'Generating ID…' : 'Reset'}</Button></>
 
-  return <main className="min-h-screen bg-slate-100 text-slate-900"><header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4 lg:px-8"><div className="flex items-center gap-3"><div className="flex size-9 items-center justify-center overflow-hidden rounded-lg "><Image src="/image.png" alt="StratSync logo" width={36} height={36} className="size-9 object-contain" /></div><div><h1 className="text-lg font-bold tracking-tight">Risk JSON Builder</h1><p className="hidden text-xs text-slate-500 sm:block">By Stratsync.ai</p></div></div><div className="flex items-center gap-2"><label className="hidden cursor-pointer items-center gap-2 text-xs font-medium text-slate-600 md:flex"><input type="checkbox" checked={devMode} onChange={e => setDevMode(e.target.checked)} className="size-4 cursor-pointer accent-slate-900 disabled:cursor-not-allowed" />Developer Mode</label>{activeRiskStatus === 'none' ? <Button primary className="cursor-pointer" onClick={startNewRisk}><Plus className="size-3.5" />New Risk</Button> : <><Button className="cursor-pointer disabled:cursor-not-allowed" disabled={!canAddToDatabase} onClick={() => { void addToDatabase() }}>{databaseSaveStatus === 'saving' && databaseSaveRiskId === risk.risk_id ? <Loader2 className="size-3.5 animate-spin" /> : riskAlreadyInDatabase ? <Check className="size-3.5" /> : <Database className="size-3.5" />}{databaseButtonLabel}</Button><Button className="cursor-pointer disabled:cursor-not-allowed" disabled={isGeneratingRiskId} onClick={resetRisk}>{isGeneratingRiskId ? <RefreshCw className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}{isGeneratingRiskId ? 'Generating ID…' : 'Reset'}</Button></>}<ProfileMenu user={user} onSignOut={signOut} /></div></div></header><div className="mx-auto max-w-[1500px] px-5 py-6 lg:px-8"><div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between"><div><div className="mb-2 flex min-h-4 items-center gap-2">{saveStatus}</div><h2 className="text-3xl font-bold tracking-tight text-slate-950">Risk JSON Builder</h2><p className="mt-1 text-sm text-slate-500">Build structured risk payloads visually or convert existing JSON into a readable risk view.</p></div><div className="flex max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 shadow-sm"><button onClick={() => setMode('form')} className={`shrink-0 cursor-pointer rounded-md px-4 py-2 text-xs font-semibold transition-colors duration-200 ease-in-out ${mode === 'form' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>Form → JSON</button><button onClick={() => setMode('json')} className={`shrink-0 cursor-pointer rounded-md px-4 py-2 text-xs font-semibold transition-colors duration-200 ease-in-out ${mode === 'json' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>JSON → UI</button><button onClick={() => setMode('database')} className={`shrink-0 cursor-pointer rounded-md px-4 py-2 text-xs font-semibold transition-colors duration-200 ease-in-out ${mode === 'database' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>Database Risks</button></div></div>{builderContent}</div>{notice && <div className="fixed bottom-5 right-5 flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-xl"><Check className="size-4 text-emerald-400" />{notice}</div>}</main>
+  return <main className="min-h-screen bg-slate-100 text-slate-900"><header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4 lg:px-8"><div className="flex items-center gap-3"><div className="flex size-9 items-center justify-center overflow-hidden rounded-lg "><Image src="/image.png" alt="StratSync logo" width={36} height={36} className="size-9 object-contain" /></div><div><h1 className="text-lg font-bold tracking-tight">Risk JSON Builder</h1><p className="hidden text-xs text-slate-500 sm:block">By Stratsync.ai</p></div></div><div className="flex items-center gap-2"><label className="hidden cursor-pointer items-center gap-2 text-xs font-medium text-slate-600 md:flex"><input type="checkbox" checked={devMode} onChange={e => setDevMode(e.target.checked)} className="size-4 cursor-pointer accent-slate-900 disabled:cursor-not-allowed" />Developer Mode</label>{headerActions}<ProfileMenu user={user} onSignOut={signOut} /></div></div></header><div className="mx-auto max-w-[1500px] px-5 py-6 lg:px-8"><div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between"><div><div className="mb-2 flex min-h-4 items-center gap-2">{saveStatus}</div><h2 className="text-3xl font-bold tracking-tight text-slate-950">Risk JSON Builder</h2><p className="mt-1 text-sm text-slate-500">Build structured risk payloads visually or convert existing JSON into a readable risk view.</p></div><div className="flex max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 shadow-sm"><button onClick={() => setMode('form')} className={`shrink-0 cursor-pointer rounded-md px-4 py-2 text-xs font-semibold transition-colors duration-200 ease-in-out ${mode === 'form' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>Form → JSON</button><button onClick={() => setMode('json')} className={`shrink-0 cursor-pointer rounded-md px-4 py-2 text-xs font-semibold transition-colors duration-200 ease-in-out ${mode === 'json' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>JSON → UI</button><button onClick={() => setMode('database')} className={`shrink-0 cursor-pointer rounded-md px-4 py-2 text-xs font-semibold transition-colors duration-200 ease-in-out ${mode === 'database' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>Database Risks</button></div></div>{builderContent}</div>{notice && <div className="fixed bottom-5 right-5 flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-xl"><Check className="size-4 text-emerald-400" />{notice}</div>}</main>
 }
 
 export default function Page() {
