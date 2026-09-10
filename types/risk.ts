@@ -5,7 +5,7 @@ export interface RiskMetric { key: string; label: string; value: string; raw_val
 export interface RiskSender { name: string; source: string; risk_id: string; timestamp: string; context: string }
 export interface RiskEntity { type: string; id: string; name: string; secondary?: RiskEntity }
 export interface RiskDetailItem { label: string; value: string }
-export interface RiskDetailSection { key: string; title: string; items: string[] }
+export interface RiskDetailSection { key: string; title: string; items: string[]; uiId?: string }
 export interface RiskDetails { section_title: string; items: RiskDetailItem[]; underlying_exposure: string[]; impact: string[]; sections: RiskDetailSection[] }
 export interface MitigationStep { step: number; title: string; description: string; owner: string }
 export interface RiskMitigation { summary: string; steps: MitigationStep[]; last_updated: string; next_action: string }
